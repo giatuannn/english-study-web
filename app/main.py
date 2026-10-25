@@ -1,6 +1,6 @@
 from fastapi import FastAPI, HTTPException
 
-from app.transcript import extract_video_id, get_sentences
+from app.transcript import TranscriptError,  extract_video_id, get_sentences
 
 app = FastAPI(title = "English Study Web")
 
@@ -16,13 +16,9 @@ def health():
 def transcript(url: str):
         try:
             video_id = extract_video_id(url)
-        except ValueError as e:
-            raise HTTPException(status_code=400, detail=str(e))
-
-        try:
             sentences = get_sentences(video_id)
-        except Exception as e:
-            raise HTTPException(status_code=404, detail=f"Could not get transcript: {e}")
+        except TranscriptError as e:
+            raise HTTPException(status_code=e.status_code, detail=e.message)
 
         return {
         "video_id": video_id,

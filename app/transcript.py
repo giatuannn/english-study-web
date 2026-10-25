@@ -9,12 +9,30 @@ ABBREVIATIONS = {"mr.", "mrs.", "ms.", "dr.", "prof.", "vs.", "e.g.", "i.e."}
 MAX_WORDS = 30   # force a split after this many words
 MAX_GAP = 1.5    # seconds of silence that also ends a sentence
 
+class TranscriptError(Exception):
+    """An error we can show to the user."""
+    def __init__(self, status_code: int, message: str):
+        super().__init__(message)
+        self.status_code = status_code
+        self.message = message
+
+
+ERROR_MAP = {
+        "TranscriptsDisabled": (422, "This video has no captions."),
+        "NoTranscriptFound": (422, "This video has no English captions."),
+        "VideoUnavailable": (404, "This video is private, deleted or unavailable."),
+        "VideoUnplayable": (404, "This video is private, deleted or unavailable."),
+        "InvaildVideoID": (400, "That doesn't look like a Youtuble link."),
+        "AgeRestricted": (403,  "This video is age-restricted"),
+        "IpBlocked": (503, "Youtube is blocking requests right now. Try again later."),
+        "RequestBlocked": (503, "Youtube is blocking requests right now. Try again later.")
+}
 
 def extract_video_id(url: str) -> str:
     """Get the 11-character video ID from a YouTube URL."""
-    match = re.search(r"(?:v=|youtu\.be/|embed/|shorts/)([\w-]{11})", url)
+    match = re.search(r"(?:v=|youtu\.be/|embed/|shorts/)([\w-]{11})", url or "")
     if not match:
-        raise ValueError("Invalid YouTube URL")
+        raise TranscriptError(400, "That doesn't look like a Youtube link.")
     return match.group(1)
 
 
@@ -89,5 +107,17 @@ def merge_into_sentences(snippets) -> list[dict]:
 
 
 def get_sentences(video_id: str) -> list[dict]:
-    fetched = YouTubeTranscriptApi().fetch(video_id, languages=["en"])
-    return merge_into_sentences(fetched)
+    try:
+        fetched = YouTubeTranscriptApi().fetch(
+            video_id, languages=["en", "en-US", "en-GB"]
+            )
+    except Exception as e:
+        status, message = ERROR_MAP.get(
+            type(e).__name__,(500, "Some thing went wrong while getting the captions.")
+        )
+        print(f"[transcript] {type(e).__name__}: {e}")  # get full detail in the terminal
+        raise TranscriptError(status, message) from e
+    sentences = merge_into_sentences(fetched)
+    if not sentences:
+        raise TranscriptError(422, "The cations for this video are empty.")
+    return sentences
